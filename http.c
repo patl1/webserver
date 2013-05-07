@@ -17,6 +17,7 @@
 
 struct memory_block *blocks;
 
+//changes
 // returns contents of file
 char* getfile(char* filename){
 	char buffer[MAXLINE] = "\0";

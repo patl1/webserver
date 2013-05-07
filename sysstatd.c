@@ -10,12 +10,12 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
-#include "threadpool.h"
 
 #define MAX_THREADS 100
 #define MSG_SIZE 500000
 
 #include "http.h"
+#include "threadpool.h"
 
 int done[MAX_THREADS];			//1000 == max number of threads
 struct future * f[MAX_THREADS];	
@@ -180,21 +180,21 @@ int main(int argc, char *argv[]){
     int ind;
     int portno = -1; 
     bzero(path, 200);
+    //looking through the input
+    printf("Looking through input...\n");
     for(ind = 1; ind + 1 < argc; ++ind){   
-	if (strcmp(argv[ind], "-p") == 0){
-		ind += 1;
-		portno = atoi(argv[ind]);
-	}
-	else if(strcmp(argv[ind], "-r") == 0){
-		;//to be implemented...
-	}
-	else if(strcmp(argv[ind], "-R") == 0){
-		ind += 1;
-		strcpy(path, argv[ind]);
-	}
-	else{
-		error("invalid argument found!\n-p _portno_\n\n");
-	}
+	    if (strcmp(argv[ind], "-p") == 0){
+		    ind += 1;
+		    portno = atoi(argv[ind]);
+	    }
+	    else if(strcmp(argv[ind], "-r") == 0){ ;/*to be implemented...*/  }
+	    else if(strcmp(argv[ind], "-R") == 0){
+		    ind += 1;
+		    strcpy(path, argv[ind]);
+	    }
+	    else{
+		    error("invalid argument found!\n-p _portno_\n\n");
+	    }
     }
     if (portno == -1) error("port must be assigned with '-p'\n");
 

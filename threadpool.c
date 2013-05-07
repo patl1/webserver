@@ -152,7 +152,7 @@ void future_free(struct future * f)
 {
 	if(f != NULL)
 	{
-	    assert (f->getCalled == 1);
+	    //assert (f->getCalled == 1);
 		free(f);
 	}   
 }
