@@ -4,7 +4,7 @@ LDLIBS=-lpthread
 
 all:		sysstatd	
 
-sysstatd:	list.o threadpool.o http.o
+sysstatd:	list.o threadpool.o rio.o
 
 clean:
 	rm -f *.o sysstatd
