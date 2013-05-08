@@ -164,6 +164,8 @@ int main(int argc, char **argv)
     return 0;
 }
 
+
+/* Processes http requests.  Pretty straightforward. */
 static void process_http(int fd)
 {
 
