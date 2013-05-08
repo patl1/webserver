@@ -13,6 +13,9 @@
 #include <sys/socket.h>
 #include <sys/wait.h>
 #include <pthread.h>
+#include <netdb.h>
+#include <error.h>
+
 
 /* Our own defined files */
 #include "sysstatd.h"
@@ -21,6 +24,9 @@
 /* Global variables */
 static char *our_path;
 static struct thread_pool *pool;
+
+/* Declaration */
+void doit(int fd);
 
 
 /*  Just a helper function.  Prints an error message in the case of incorrect
@@ -53,6 +59,7 @@ int main(int argc, char **argv)
 	usage(argv[0]);
     
     long port;
+    bool relay = false;
 
     char c;
     /* The 'getopt' function profides a nice way to collect all the input 
@@ -84,14 +91,16 @@ int main(int argc, char **argv)
     	        break;
     	    }
     
-    	case 'r': break;    //relay server option 
+    	    case 'r':
+                relay = true;
+                break;    //relay server option 
     
-    	case 'R': //manually specify a directory for the server
-    	    our_path = strdup(optarg);
+          	case 'R': //manually specify a directory for the server
+    	        our_path = strdup(optarg);
     	    break;
     
-    	default:
-            usage(argv[0]);
+    	    default:
+                usage(argv[0]);
 	    }
     }
 
@@ -114,17 +123,62 @@ int main(int argc, char **argv)
     	exit(1);
     }
 
+    /* If relay server, send out connections */
+    if(relay)
+    {
+        //int result = 0;
+	struct addrinfo *ai;
+	struct addrinfo hints;
+	memset(&hints, '\0', sizeof(hints));
+	hints.ai_flags = AI_ADDRCONFIG;
+	hints.ai_socktype = SOCK_STREAM;
+	char* name = strtok(argv[2], ":");
+	char* portname = strtok(NULL, "/");
+	//int e = 
+	getaddrinfo(name, portname, &hints, &ai);
+	//if (e != 0) error(EXIT_FAILURE, 0, "getaddrinfo: %s", strerror(e));
+	struct addrinfo *runp = ai;
+	while (runp != NULL)
+	{
+	   // int sock = socket(runp->ai_family, runp->ai_socktype, runp->ai_protocol);
+	    if(socketfd != -1)
+	    {
+		if(connect(socketfd, runp->ai_addr, runp->ai_addrlen) == 0)
+		{
+		    char *line = "group350\r\n";
+		    //printf("connected: %s\t %s\t %s\n", name, portname, line);
+		    write(socketfd, line, strlen(line));
+		    while(1)
+		    {
+			//printf("Inside loop \n");			
+			process_http(socketfd);
+			//printf("Skipped http\n");
+		    }
+		    close(socketfd);
+		    freeaddrinfo(ai);
+		    //return result;
+		}
+	    }
+	    runp = runp->ai_next;
+	}
+	//return 1;
+    }            
+
     struct sockaddr_in serveraddr;
     bzero((char *)&serveraddr, sizeof(serveraddr));
     serveraddr.sin_family = AF_INET;
     serveraddr.sin_addr.s_addr = htonl(INADDR_ANY);
-    serveraddr.sin_port = htons((unsigned short) port);
-    
-    /* Binds the socket */
-    if (bind(socketfd, (struct sockaddr *)&serveraddr, sizeof(serveraddr)) < 0) 
+    serveraddr.sin_port = htons((unsigned short) port);    
+
+    /* Don't bind to a socket if this is a relay server */
+    if(!relay)
     {
-	    fprintf(stderr, "Error binding socket. %s.\n", strerror(errno));
-	    exit(1);
+        /* Binds the socket.  Doesn't work with IPv6 and I can't figure out why */
+        if (bind(socketfd, (struct sockaddr *)&serveraddr, sizeof(serveraddr)) < 0) 
+        {
+    	    fprintf(stderr, "Error binding socket. %s.\n", strerror(errno));
+    	    exit(1);
+        }
     }
 
     /* Set listener for the socket */
@@ -151,7 +205,7 @@ int main(int argc, char **argv)
          * on the old one */
     	if ((connfd = accept(socketfd, (struct sockaddr *)&dupsock, (socklen_t *)&clientlen)) <= 0) 
         {
-	         fprintf(stderr, "Error acceping connection.\n");
+	         fprintf(stderr, "Error accepting connection.\n");
 	         exit(1);
 	    }
 
@@ -171,6 +225,7 @@ int main(int argc, char **argv)
 
 static void process_http(int fd)
 {
+	//printf("Inside http\t");
 
     int is_static;
     struct stat sbuf;
@@ -399,7 +454,7 @@ static void process_http(int fd)
 
 	if (strncmp(version, "HTTP/1.0", 8) == 0) { break; }
     }
-    
+    //printf("finished http\n");
     close(fd);
 }
 
@@ -636,3 +691,56 @@ void serve_dynamic(int fd, char *filename, char *cgiargs)
     	exit(1);
     }
 }
+
+
+
+/*
+ * doit - handle one HTTP request/response transaction
+ */
+/* $begin doit */
+void doit(int fd) 
+{
+    int is_static;
+    struct stat sbuf;
+    char buf[MAXLINE], method[MAXLINE], uri[MAXLINE], version[MAXLINE];
+    char filename[MAXLINE], cgiargs[MAXLINE];
+    rio_t rio;
+  
+    /* Read request line and headers */
+    Rio_readinitb(&rio, fd);
+    Rio_readlineb(&rio, buf, MAXLINE);                   //line:netp:doit:readrequest
+    sscanf(buf, "%s %s %s", method, uri, version);       //line:netp:doit:parserequest
+    if (strcasecmp(method, "GET")) {                     //line:netp:doit:beginrequesterr
+       clienterror(fd, method, "501", "Not Implemented",
+                "Tiny does not implement this method", "1.1");
+        return;
+    }                                                    //line:netp:doit:endrequesterr
+    read_requesthdrs(&rio);                              //line:netp:doit:readrequesthdrs
+
+    /* Parse URI from GET request */
+    is_static = parse_uri(uri, filename, cgiargs);       //line:netp:doit:staticcheck
+    if (stat(filename, &sbuf) < 0) {                     //line:netp:doit:beginnotfound
+	clienterror(fd, filename, "404", "Not found",
+		    "Tiny couldn't find this file", "1.1");
+	return;
+    }                                                    //line:netp:doit:endnotfound
+
+    if (is_static) { /* Serve static content */          
+	if (!(S_ISREG(sbuf.st_mode)) || !(S_IRUSR & sbuf.st_mode)) { //line:netp:doit:readable
+	    clienterror(fd, filename, "403", "Forbidden",
+			"Tiny couldn't read the file", "1.1");
+	    return;
+	}
+	serve_static(fd, filename, sbuf.st_size);        //line:netp:doit:servestatic
+    }
+    else { /* Serve dynamic content */
+	if (!(S_ISREG(sbuf.st_mode)) || !(S_IXUSR & sbuf.st_mode)) { //line:netp:doit:executable
+	    clienterror(fd, filename, "403", "Forbidden",
+			"Tiny couldn't run the CGI program", "1.1");
+	    return;
+	}
+	serve_dynamic(fd, filename, cgiargs);            //line:netp:doit:servedynamic
+    }
+}
+/* $end doit */
+
