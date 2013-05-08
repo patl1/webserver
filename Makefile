@@ -7,4 +7,4 @@ all:		sysstatd
 sysstatd:	list.o threadpool.o rio.o
 
 clean:
-	rm -f *.o sysstatd
+	rm -f *.o *~ sysstatd

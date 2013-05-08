@@ -145,7 +145,7 @@ int main(int argc, char **argv)
 	    {
 		if(connect(socketfd, runp->ai_addr, runp->ai_addrlen) == 0)
 		{
-		    char *line = "group350\r\n";
+		    char *line = "group350-rlogin\r\n";
 		    //printf("connected: %s\t %s\t %s\n", name, portname, line);
 		    write(socketfd, line, strlen(line));
 		    while(1)
