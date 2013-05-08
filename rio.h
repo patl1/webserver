@@ -1,4 +1,3 @@
-/* rio.h */
 #ifndef __RIO_H__
 #define __RIO_H__
 
@@ -9,7 +8,6 @@
 #include <string.h>
 
 /* Persistent state for the robust I/O (Rio) package */
-/* $begin rio_t */
 #define RIO_BUFSIZE 8192
 typedef struct {
     int rio_fd;                /* descriptor for this internal buf */
@@ -17,7 +15,6 @@ typedef struct {
     char *rio_bufptr;          /* next unread byte in internal buf */
     char rio_buf[RIO_BUFSIZE]; /* internal buffer */
 } rio_t;
-/* $end rio_t */
 
 /* Unix Error Handler */
 void unix_error(char *msg);
