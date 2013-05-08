@@ -95,22 +95,23 @@ int main(int argc, char **argv)
 	    }
     }
 
-    if (our_path == NULL)
-	our_path = "files";
-
+    /* For if there is no path specified */
+    if (our_path == NULL) our_path = "files";
+    /* Initializations */
     list_init(&memory_list);
-
     int socketfd, optval = 1;
     intptr_t connfd;
-
-    if ((socketfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-	fprintf(stderr, "Error opening socket.\n");
-	exit(1);
+    /* Bind the socket and do error checking */
+    if ((socketfd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
+    {
+	    fprintf(stderr, "Error opening socket.\n");
+	    exit(1);
     }
-
-    if (setsockopt(socketfd, SOL_SOCKET, SO_REUSEADDR, (const void *)&optval , sizeof(int)) < 0) {
-	fprintf(stderr, "Error in socket. %s.\n", strerror(errno));
-	exit(1);
+    /* Set options on the socket */
+    if (setsockopt(socketfd, SOL_SOCKET, SO_REUSEADDR, (const void *)&optval , sizeof(int)) < 0)
+    {
+    	fprintf(stderr, "Error in setting socket options. %s.\n", strerror(errno));
+    	exit(1);
     }
 
     struct sockaddr_in serveraddr;

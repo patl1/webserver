@@ -1,16 +1,15 @@
-/* server.h */
 #ifndef __SERVER_H__
 #define __SERVER_H__
 
-#include "rio.h"
 #include "list.h"
+#include "rio.h"
 
-#define THREADS 20
+#define THREADS 50
 #define MAXLINE 8192
 #define MAXBUF  8192
 
-extern char **environ; /* defined by libc */
-struct list memory_list;
+extern char **environ;   /* defined by libc */
+struct list memory_list; /* Previously used */
 
 struct memory {
     void *block;
@@ -29,4 +28,4 @@ void get_filetype(char *filename, char *filetype);
 void serve_dynamic(int fd, char *filename, char *cgiargs);
 
 
-#endif /* server.h */
+#endif 
