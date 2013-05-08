@@ -105,7 +105,7 @@ int main(int argc, char **argv)
     }
 
     /* For if there is no path specified */
-    if (our_path == NULL) our_path = "files";
+    if (our_path == NULL) our_path = "widgets";
     /* Initializations */
     list_init(&memory_list);
     int socketfd, optval = 1;
