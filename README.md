@@ -24,4 +24,7 @@ Widget Support:
     Theoretically, the widgets should work.  We have not done much testing on 
     them.  To run, you will need to specify the port (i.e. $sysstatd -p 22123).
 
+Other stuff:
+    The 'loadavg' and 'meminfo' stuff should also work, but it is slightly 
+    untested. We are very hopeful.
 
