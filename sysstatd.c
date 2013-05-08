@@ -101,7 +101,7 @@ int main(int argc, char **argv)
     list_init(&memory_list);
     int socketfd, optval = 1;
     intptr_t connfd;
-    /* Bind the socket and do error checking */
+    /* Creates a socket */
     if ((socketfd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
     {
 	    fprintf(stderr, "Error opening socket.\n");
@@ -120,38 +120,47 @@ int main(int argc, char **argv)
     serveraddr.sin_addr.s_addr = htonl(INADDR_ANY);
     serveraddr.sin_port = htons((unsigned short) port);
     
-    if (bind(socketfd, (struct sockaddr *)&serveraddr, sizeof(serveraddr)) < 0) {
-	fprintf(stderr, "Error binding socket. %s.\n", strerror(errno));
-	exit(1);
-    }
-
-    if (listen(socketfd, 1024) < 0) {
-	fprintf(stderr, "Error listening to socket.\n");
-	exit(1);
-    }
-
-    pool = thread_pool_new(THREADS);
-    struct sockaddr_in clientaddr;
-
-    for (;;) {
-	// new connected socket
-	int clientlen = sizeof(clientaddr);
-
-	if ((connfd = accept(socketfd, (struct sockaddr *)&clientaddr, (socklen_t *)&clientlen)) <= 0) {
-	    fprintf(stderr, "Error acceping connection.\n");
+    /* Binds the socket */
+    if (bind(socketfd, (struct sockaddr *)&serveraddr, sizeof(serveraddr)) < 0) 
+    {
+	    fprintf(stderr, "Error binding socket. %s.\n", strerror(errno));
 	    exit(1);
-	}
+    }
 
-	// execute request in a different thread
-	thread_pool_submit(pool, (thread_pool_callable_func_t)process_http, (int *)connfd);
-
-	/*while (future_get(f)) {
-	  future_free(f);
-	  }*/
+    /* Set listener for the socket */
+    if (listen(socketfd, 1024) < 0) 
+    {
+    	fprintf(stderr, "Error listening to socket.\n");
+    	exit(1);
     }
     
+    /* Create threadpool */
+    pool = thread_pool_new(THREADS);
+    /* Create a new, duplicate socket */
+    struct sockaddr_in dupsock;
+
+    /* Infinite loop that continuously listens for connections.  If found, 
+     * submit it to the threadpool so it can be run in a different thread.
+     */
+    for (;;) 
+    {
+	    // new connected socket
+	    int clientlen = sizeof(dupsock);
+
+        /* Accept traffic, but put it into a new socket so we can still listen 
+         * on the old one */
+    	if ((connfd = accept(socketfd, (struct sockaddr *)&dupsock, (socklen_t *)&clientlen)) <= 0) 
+        {
+	         fprintf(stderr, "Error acceping connection.\n");
+	         exit(1);
+	    }
+
+	    // execute request in a different thread
+	    thread_pool_submit(pool, (thread_pool_callable_func_t)process_http, (int *)connfd);
+
+    }
+    /* When shutdown received */
     thread_pool_shutdown(pool);
-    
     return 0;
 }
 
