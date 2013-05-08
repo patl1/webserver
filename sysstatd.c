@@ -165,7 +165,10 @@ int main(int argc, char **argv)
 }
 
 
-/* Processes http requests.  Pretty straightforward. */
+/* Processes http requests.  Pretty straightforward. 
+ * Support for loadavg, meminfo, and the widgets.
+ * */
+
 static void process_http(int fd)
 {
 
@@ -182,70 +185,74 @@ static void process_http(int fd)
     
     while (1) {
 
-	/* Read request line and headers */
-	ssize_t x;
-	if ((x = Rio_readlineb(&rio, buf, MAXLINE)) <= 0)
-	    break;
-
-	sscanf(buf, "%s %s %s", method, uri, version);
-
-	if (strcasecmp(method, "GET")) {
-	    clienterror(fd, method, "501", "Not Implemented", "Server does not implement this method", version);
-	    continue;
+    	/* Read request line and headers */
+    	ssize_t x;
+    	if ((x = Rio_readlineb(&rio, buf, MAXLINE)) <= 0) break;
+        
+        
+    	sscanf(buf, "%s %s %s", method, uri, version);
+    
+        /* GET request */
+    	if (strcasecmp(method, "GET"))
+        {
+    	    clienterror(fd, method, "501", "Not Implemented", "Server does not implement this method", version);
+    	    continue;
+    	}
+    
+        /* Reading the request */
+    	ssize_t size = read_requesthdrs(&rio);
+    	if (size <= 0) 
+        {
+    	    if (strncmp(version, "HTTP/1.0", 8) == 0) { break; }
+    	    else { continue; }
+    	}
+    
+    	/* Parse URI from GET request */
+    	is_static = parse_uri(uri, filename, cgiargs);
+    
+    	/* If the request was loadavg:  /proc/loadavg */
+    	if (strncmp(uri, "/loadavg\0", sizeof("/loadavg\0")-1) == 0 || strncmp(uri, "/loadavg?", sizeof("/loadavg?")-1) == 0) 
+        {
+    
+    	    FILE *fp;
+    	    fp = fopen("/proc/loadavg", "r");
+    
+    	    if (fp) {
+    
+    		char loadbuf[256];
+    		fgets(loadbuf, sizeof(loadbuf), fp);
+    		fclose(fp);
+    
+    		float loadavg1;
+    		float loadavg2;
+    		float loadavg3;
+    		int running;
+    		char sep;
+    		int total;
+    
+    		sscanf(loadbuf, "%f %f %f %d %c %d", &loadavg1, &loadavg2, &loadavg3, &running, &sep, &total);
+    
+            /* Make sure it's in JSON format */
+    		char load_json[256];
+    		sprintf(load_json, "{\"total_threads\": \"%d\", \"loadavg\": [\"%.2f\", \"%.2f\", \"%.2f\"], \"running_threads\": \"%d\"}", total, loadavg1, loadavg2, loadavg3, running);
+    
+            /* Support for callbacks */
+    		char callbackbuf[256];	   
+    		if (parse_callback(uri, callbackbuf) > 0) 
+            {
+    		    char returnbuf[256];
+    		    sprintf(returnbuf, "%s(%s)", callbackbuf, load_json);
+    		    response_ok(fd, returnbuf, "application/javascript", version);
+    		}
+    
+    		else 
+            {
+    		    response_ok(fd, load_json, "application/json", version);
+    		}
+	    }
 	}
 
-	ssize_t size = read_requesthdrs(&rio);
-	if (size <= 0) {
-	    if (strncmp(version, "HTTP/1.0", 8) == 0) {
-		break;
-	    }
-
-	    else {
-		continue;
-	    }
-	}
-
-	/* Parse URI from GET request */
-	is_static = parse_uri(uri, filename, cgiargs);
-
-	/* /proc/loadavg */
-	if (strncmp(uri, "/loadavg\0", sizeof("/loadavg\0")-1) == 0 || strncmp(uri, "/loadavg?", sizeof("/loadavg?")-1) == 0) {
-
-	    FILE *fp;
-	    fp = fopen("/proc/loadavg", "r");
-
-	    if (fp) {
-
-		char loadbuf[256];
-		fgets(loadbuf, sizeof(loadbuf), fp);
-		fclose(fp);
-
-		float loadavg1;
-		float loadavg2;
-		float loadavg3;
-		int running;
-		char sep;
-		int total;
-
-		sscanf(loadbuf, "%f %f %f %d %c %d", &loadavg1, &loadavg2, &loadavg3, &running, &sep, &total);
-
-		char load_json[256];
-		sprintf(load_json, "{\"total_threads\": \"%d\", \"loadavg\": [\"%.2f\", \"%.2f\", \"%.2f\"], \"running_threads\": \"%d\"}", total, loadavg1, loadavg2, loadavg3, running);
-
-		char callbackbuf[256];	   
-		if (parse_callback(uri, callbackbuf) > 0) {
-		    char returnbuf[256];
-		    sprintf(returnbuf, "%s(%s)", callbackbuf, load_json);
-		    response_ok(fd, returnbuf, "application/javascript", version);
-		}
-
-		else {
-		    response_ok(fd, load_json, "application/json", version);
-		}
-	    }
-	}
-
-	/* /proc/meminfo */
+	/* If the request was about meminfo: /proc/meminfo */
 	else if (strncmp(uri, "/meminfo\0", sizeof("/meminfo\0")-1) == 0 || strncmp(uri, "/meminfo?", sizeof("/meminfo?")-1) == 0) {
 
 	    FILE *fp;
@@ -257,10 +264,13 @@ static void process_http(int fd)
 		char membuf[1024];
 		strcpy(membuf, "{");
 		int flag = 0;
+        
+        /* Read in */
+		while (fgets(line, sizeof(line), fp)) 
+        {
 
-		while (fgets(line, sizeof(line), fp)) {
-
-		    if (flag != 0) {
+		    if (flag != 0)
+            {
 			strcat(membuf, ", ");
 		    }
 
@@ -282,7 +292,8 @@ static void process_http(int fd)
 		strcat(membuf, "}");
 
 		char callbackbuf[256];	   
-		if (parse_callback(uri, callbackbuf) > 0) {
+		if (parse_callback(uri, callbackbuf) > 0) 
+        {
 		    char returnbuf[256];
 		    sprintf(returnbuf, "%s(%s)", callbackbuf, membuf);
 		    response_ok(fd, returnbuf, "application/javascript", version);
@@ -293,38 +304,50 @@ static void process_http(int fd)
 	    }
 	}
 
-	else if (strncmp(filename, pathbuf, strlen(pathbuf)) == 0) {
+    /* If looking for a specific file */
+	else if (strncmp(filename, pathbuf, strlen(pathbuf)) == 0)
+    {
 
 	    // check that filename does not contain '..'
 	    if (strstr(filename, "..") != NULL)
-		clienterror(fd, filename, "403", "Forbidden", "Server couldn't read the file", version);
-
-	    if (stat(filename, &sbuf) < 0)
-		clienterror(fd, filename, "404", "Not found", "Page Not Found", version);
-
-	    if (is_static) {
-
-		if (!(S_ISREG(sbuf.st_mode)) || !(S_IRUSR & sbuf.st_mode))
+        {
 		    clienterror(fd, filename, "403", "Forbidden", "Server couldn't read the file", version);
+        }
+	    if (stat(filename, &sbuf) < 0)
+        {
+            clienterror(fd, filename, "404", "Not found", "Page Not Found", version);
+        }
+	    if (is_static) 
+        {
 
-		serve_static(fd, filename, sbuf.st_size);
+		    if (!(S_ISREG(sbuf.st_mode)) || !(S_IRUSR & sbuf.st_mode))
+            {
+                clienterror(fd, filename, "403", "Forbidden", "Server couldn't read the file", version);
+            }
+		    serve_static(fd, filename, sbuf.st_size);
 	    }
     
-	    else {
+	    else 
+        {
 
-		if (!(S_ISREG(sbuf.st_mode)) || !(S_IXUSR & sbuf.st_mode))
-		    clienterror(fd, filename, "403", "Forbidden", "Server couldn't run the CGI program", version);
-
-		serve_dynamic(fd, filename, cgiargs);
+		    if (!(S_ISREG(sbuf.st_mode)) || !(S_IXUSR & sbuf.st_mode))
+            {
+                clienterror(fd, filename, "403", "Forbidden", "Server couldn't run the CGI program", version);
+            }
+		    serve_dynamic(fd, filename, cgiargs);
 	    }
 	}
 
-	else if (strncmp(uri, "/runloop", strlen("/runloop")) == 0) {
+    /* Runloop widget */
+	else if (strncmp(uri, "/runloop", strlen("/runloop")) == 0)
+    {
 	    response_ok(fd, "<html>\n<body>\n<p>Started 15 second spin.</p>\n</body>\n</html>", "text/html", version);
 	    thread_pool_submit(pool, (thread_pool_callable_func_t)run_loop, (int *)0);
 	}
 
-	else if (strncmp(uri, "/allocanon", strlen("/allocanon")) == 0) {
+    /* Allocanon widget */
+	else if (strncmp(uri, "/allocanon", strlen("/allocanon")) == 0)
+    {
 
 	    void *block = mmap(0, 67108864, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
 
@@ -345,6 +368,7 @@ static void process_http(int fd)
 	    }
 	}
 
+    /* Freenon widget */
 	else if (strncmp(uri, "/freeanon", strlen("/freeanon")) == 0) {
 
 	    if (list_size(&memory_list) > 0) {
@@ -369,13 +393,11 @@ static void process_http(int fd)
 		response_ok(fd, buf, "text/html", version);
 	    }
 	}
-
+    /* Couldn't find the request */
 	else
 	    clienterror(fd, filename, "404", "Not Found", "Not found", version);
 
-	if (strncmp(version, "HTTP/1.0", 8) == 0) {
-	    break;
-	}
+	if (strncmp(version, "HTTP/1.0", 8) == 0) { break; }
     }
     
     close(fd);
@@ -383,17 +405,17 @@ static void process_http(int fd)
 
 /*
  * read_requesthdrs - read and parse HTTP request headers
- * Taken from Tiny server
+ * Shamelessley taken from Tiny server
  */
 ssize_t read_requesthdrs(rio_t *rp) 
 {
     char buf[MAXLINE];
 
     ssize_t size = Rio_readlineb(rp, buf, MAXLINE);
-    while(strcmp(buf, "\r\n")) {
-	size = Rio_readlineb(rp, buf, MAXLINE);
-	if (size <= 0)
-	    break;
+    while(strcmp(buf, "\r\n")) 
+    {
+	    size = Rio_readlineb(rp, buf, MAXLINE);
+	    if (size <= 0) break;
     }
     return size;
 }
@@ -407,34 +429,37 @@ int parse_uri(char *uri, char *filename, char *cgiargs)
 {
     char *ptr;
 
-    if (!strstr(uri, "cgi-bin")) {
-	strcpy(cgiargs, "");
-	strcpy(filename, ".");
-	strcat(filename, uri);
-	if (uri[strlen(uri)-1] == '/') {
-	    char pathbuf[64];
-	    sprintf(pathbuf, "%s/home.html", our_path);
-	    strcat(filename, pathbuf);
-	}
-	return 1;
+    if (!strstr(uri, "cgi-bin")) 
+    {
+	    strcpy(cgiargs, "");
+	    strcpy(filename, ".");
+	    strcat(filename, uri);
+	    if (uri[strlen(uri)-1] == '/')
+        {
+	        char pathbuf[64];
+	        sprintf(pathbuf, "%s/home.html", our_path);
+	        strcat(filename, pathbuf);
+	    }
+	    return 1;
     }
 
-    else {  /* Dynamic content */                        //line:netp:parseuri:isdynamic
-	ptr = index(uri, '?');                           //line:netp:parseuri:beginextract
-	if (ptr) {
-	    strcpy(cgiargs, ptr+1);
-	    *ptr = '\0';
-	}
-	else 
-	    strcpy(cgiargs, "");                         //line:netp:parseuri:endextract
-	strcpy(filename, ".");                           //line:netp:parseuri:beginconvert2
-	strcat(filename, uri);                           //line:netp:parseuri:endconvert2
-	return 0;
+    else /* Dynamic content */
+    {                                                    //line:netp:parseuri:isdynamic
+	    ptr = index(uri, '?');                           //line:netp:parseuri:beginextract
+	    if (ptr) 
+        {
+	        strcpy(cgiargs, ptr+1);
+	        *ptr = '\0';
+    	}
+	    else strcpy(cgiargs, "");                         //line:netp:parseuri:endextract
+    	strcpy(filename, ".");                           //line:netp:parseuri:beginconvert2
+    	strcat(filename, uri);                           //line:netp:parseuri:endconvert2
+	    return 0;
     }
 }
 
 /*
- * Build and send an HTTP response
+ * Build and send an HTTP response.  Just a helper function.  
  */
 void response_ok(int fd, char *msg, char *content_type, char *version)
 {
@@ -443,8 +468,7 @@ void response_ok(int fd, char *msg, char *content_type, char *version)
 
     sprintf(body, "%s", msg);
     sprintf(buf, "%s 200 OK\r\n", version);
-    if (strncmp(version, "HTTP/1.0", strlen("HTTP/1.0")) == 0)
-	sprintf(buf, "Connection: close\r\n");
+    if (strncmp(version, "HTTP/1.0", strlen("HTTP/1.0")) == 0) sprintf(buf, "Connection: close\r\n");
     Rio_writen(fd, buf, strlen(buf));
     sprintf(buf, "Content-type: %s\r\n", content_type);
     
@@ -490,57 +514,57 @@ static size_t parse_callback(char *uri, char *callback)
     ptr = index(uri, '?');
     fflush(stdout);
     
-    if (ptr) {
+    if (ptr) 
+    {
 
-	while (ptr) {
-	    ptr++;
-	    if (strncmp(ptr, "callback=", sizeof("callback=")-1) == 0) {
-
-		ptr = index(ptr, '=');
-		int pass = 0;
-
-		if (ptr) {
-		    ptr++;
-
-		    int i = 0;
-
-		    while (*ptr && *ptr != '&') {
-
-			int c = ptr[0];
-			if ((c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c == 46 || (c >= 48 && c <= 57) || c == 95) {
-			    callback[i] = *ptr;
-			    i++;
-			    ptr++;
-			}
-
-			else
-			    pass = 1;
-		    }
-
-		    if (pass == 0) {
-			callback[i] = '\0';
-			return sizeof(callback);
-		    }
-		}
-
-	    }
-
-	    else
-		ptr = index(ptr, '&');
-	}
+    	while (ptr) 
+        {
+    	    ptr++;
+    	    if (strncmp(ptr, "callback=", sizeof("callback=")-1) == 0) 
+            {
+    
+        		ptr = index(ptr, '=');
+        		int pass = 0;
+        
+        		if (ptr) 
+                {
+        		    ptr++;
+           		    int i = 0;
+           		    while (*ptr && *ptr != '&') 
+                    {
+               			int c = ptr[0];
+        	    		if ((c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c == 46 || (c >= 48 && c <= 57) || c == 95)
+                        {
+        			        callback[i] = *ptr;
+        			        i++;
+        			        ptr++;
+        			    }
+        			    else pass = 1;
+        		    }
+        		    if (pass == 0) 
+                    {
+        			    callback[i] = '\0';
+        			    return sizeof(callback);
+        		    }
+        		}
+        
+    	    }
+    	    else ptr = index(ptr, '&');
+    	}
     }
     
     return 0;
 }
 
 /*
- * 15 second runloop
+ * 15 second runloop widget
  */
 static void run_loop(void) {
     time_t start;
     start = time(NULL);
-    while ((time(NULL) - start) < 15) {
-	continue;
+    while ((time(NULL) - start) < 15) 
+    {
+	    continue;
     }
     return;
 }
@@ -576,18 +600,12 @@ void serve_static(int fd, char *filename, int filesize)
  */
 void get_filetype(char *filename, char *filetype) 
 {
-    if (strstr(filename, ".html"))
-	strcpy(filetype, "text/html");
-    else if (strstr(filename, ".gif"))
-	strcpy(filetype, "image/gif");
-    else if (strstr(filename, ".jpg"))
-	strcpy(filetype, "image/jpeg");
-    else if (strstr(filename, ".js"))
-	strcpy(filetype, "text/javascript");
-    else if (strstr(filename, ".css"))
-	strcpy(filetype, "text/css");
-    else
-	strcpy(filetype, "text/plain");
+    if (strstr(filename, ".html")) strcpy(filetype, "text/html");
+    else if (strstr(filename, ".gif")) strcpy(filetype, "image/gif");
+    else if (strstr(filename, ".jpg")) strcpy(filetype, "image/jpeg");
+    else if (strstr(filename, ".js")) strcpy(filetype, "text/javascript");
+    else if (strstr(filename, ".css")) strcpy(filetype, "text/css");
+    else strcpy(filetype, "text/plain");
 }  
 
 /*
@@ -604,15 +622,17 @@ void serve_dynamic(int fd, char *filename, char *cgiargs)
     sprintf(buf, "Server: Sysstatd Web Server\r\n");
     Rio_writen(fd, buf, strlen(buf));
   
-    if (fork() == 0) { /* child */ //line:netp:servedynamic:fork
-	/* Real server would set all CGI vars here */
-	setenv("QUERY_STRING", cgiargs, 1); //line:netp:servedynamic:setenv
-	dup2(fd, STDOUT_FILENO);         /* Redirect stdout to client */ //line:netp:servedynamic:dup2
-	execve(filename, emptylist, environ); /* Run CGI program */ //line:netp:servedynamic:execve
+    if (fork() == 0)
+    { /* child */ //line:netp:servedynamic:fork
+	    /* Real server would set all CGI vars here */
+	    setenv("QUERY_STRING", cgiargs, 1); //line:netp:servedynamic:setenv
+	    dup2(fd, STDOUT_FILENO);         /* Redirect stdout to client */ //line:netp:servedynamic:dup2
+	    execve(filename, emptylist, environ); /* Run CGI program */ //line:netp:servedynamic:execve
     }
 
-    if (wait(NULL) < 0) {
-	fprintf(stderr, "Wait Error.\n");
-	exit(1);
+    if (wait(NULL) < 0)     
+    {
+	    fprintf(stderr, "Wait Error.\n");
+    	exit(1);
     }
 }
