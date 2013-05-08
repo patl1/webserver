@@ -193,6 +193,8 @@ ssize_t Rio_readn(int fd, void *ptr, size_t nbytes)
 void Rio_writen(int fd, void *usrbuf, size_t n) 
 {
     rio_writen(fd, usrbuf, n);
+}
+
 
 void Rio_readinitb(rio_t *rp, int fd)
 {
