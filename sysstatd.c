@@ -145,7 +145,7 @@ int main(int argc, char **argv)
 	    {
 		if(connect(socketfd, runp->ai_addr, runp->ai_addrlen) == 0)
 		{
-		    char *line = "group350-rlogin\r\n";
+		    char *line = "group350\r\n";
 		    //printf("connected: %s\t %s\t %s\n", name, portname, line);
 		    write(socketfd, line, strlen(line));
 		    while(1)
@@ -154,7 +154,7 @@ int main(int argc, char **argv)
 			process_http(socketfd);
 			//printf("Skipped http\n");
 		    }
-		    close(socketfd);
+		    //close(socketfd);
 		    freeaddrinfo(ai);
 		    //return result;
 		}
@@ -225,7 +225,6 @@ int main(int argc, char **argv)
 
 static void process_http(int fd)
 {
-	//printf("Inside http\t");
 
     int is_static;
     struct stat sbuf;
@@ -238,11 +237,12 @@ static void process_http(int fd)
     
     Rio_readinitb(&rio, fd);
     
-    while (1) {
+    while (1) 
+    {
 
     	/* Read request line and headers */
     	ssize_t x;
-    	if ((x = Rio_readlineb(&rio, buf, MAXLINE)) <= 0) break;
+    	if ((x = Rio_readlineb(&rio, buf, MAXLINE)) <= 0) continue;
         
         
     	sscanf(buf, "%s %s %s", method, uri, version);
@@ -252,7 +252,7 @@ static void process_http(int fd)
         {
     	    clienterror(fd, method, "501", "Not Implemented", "Server does not implement this method", version);
     	    continue;
-    	}
+    	}//endif
     
         /* Reading the request */
     	ssize_t size = read_requesthdrs(&rio);
@@ -260,7 +260,7 @@ static void process_http(int fd)
         {
     	    if (strncmp(version, "HTTP/1.0", 8) == 0) { break; }
     	    else { continue; }
-    	}
+    	}//endif
     
     	/* Parse URI from GET request */
     	is_static = parse_uri(uri, filename, cgiargs);
@@ -272,190 +272,189 @@ static void process_http(int fd)
     	    FILE *fp;
     	    fp = fopen("/proc/loadavg", "r");
     
-    	    if (fp) {
-    
-    		char loadbuf[256];
-    		fgets(loadbuf, sizeof(loadbuf), fp);
-    		fclose(fp);
-    
-    		float loadavg1;
-    		float loadavg2;
-    		float loadavg3;
-    		int running;
-    		char sep;
-    		int total;
-    
-    		sscanf(loadbuf, "%f %f %f %d %c %d", &loadavg1, &loadavg2, &loadavg3, &running, &sep, &total);
-    
-            /* Make sure it's in JSON format */
-    		char load_json[256];
-    		sprintf(load_json, "{\"total_threads\": \"%d\", \"loadavg\": [\"%.2f\", \"%.2f\", \"%.2f\"], \"running_threads\": \"%d\"}", total, loadavg1, loadavg2, loadavg3, running);
-    
-            /* Support for callbacks */
-    		char callbackbuf[256];	   
-    		if (parse_callback(uri, callbackbuf) > 0) 
+    	    if (fp) 
             {
-    		    char returnbuf[256];
-    		    sprintf(returnbuf, "%s(%s)", callbackbuf, load_json);
-    		    response_ok(fd, returnbuf, "application/javascript", version);
-    		}
     
-    		else 
-            {
-    		    response_ok(fd, load_json, "application/json", version);
-    		}
-	    }
-	}
+        		char loadbuf[256];
+        		fgets(loadbuf, sizeof(loadbuf), fp);
+        		fclose(fp);
+        
+        		float loadavg1;
+        		float loadavg2;
+        		float loadavg3;
+        		int running;
+        		char sep;
+        		int total;
+        
+        		sscanf(loadbuf, "%f %f %f %d %c %d", &loadavg1, &loadavg2, &loadavg3, &running, &sep, &total);
+        
+                /* Make sure it's in JSON format */
+        		char load_json[256];
+        		sprintf(load_json, "{\"total_threads\": \"%d\", \"loadavg\": [\"%.2f\", \"%.2f\", \"%.2f\"], \"running_threads\": \"%d\"}", total, loadavg1, loadavg2, loadavg3, running);
+        
+                /* Support for callbacks */
+        		char callbackbuf[256];	   
+        		if (parse_callback(uri, callbackbuf) > 0) 
+                {
+        		    char returnbuf[256];
+        		    sprintf(returnbuf, "%s(%s)", callbackbuf, load_json);
+        		    response_ok(fd, returnbuf, "application/javascript", version);
+        		}//endif
+        		else 
+                {
+        		    response_ok(fd, load_json, "application/json", version);
+        		}//endelse
+	        }//endif
+	    }//endif
 
 	/* If the request was about meminfo: /proc/meminfo */
-	else if (strncmp(uri, "/meminfo\0", sizeof("/meminfo\0")-1) == 0 || strncmp(uri, "/meminfo?", sizeof("/meminfo?")-1) == 0) {
-
-	    FILE *fp;
-	    fp = fopen("/proc/meminfo", "r");
-
-	    if (fp) {
-
-		char line[256];
-		char membuf[1024];
-		strcpy(membuf, "{");
-		int flag = 0;
-        
-        /* Read in */
-		while (fgets(line, sizeof(line), fp)) 
+    	else if (strncmp(uri, "/meminfo\0", sizeof("/meminfo\0")-1) == 0 || strncmp(uri, "/meminfo?", sizeof("/meminfo?")-1) == 0) 
         {
-
-		    if (flag != 0)
-            {
-			strcat(membuf, ", ");
-		    }
-
-		    char title[64];
-		    long memory;
-		    char skip[5];
-
-		    sscanf(line, "%s %lu %s", title, &memory, skip);
-
-		    title[strlen(title)-1] = '\0';
-
-		    char tempbuf[256];
-		    sprintf(tempbuf, "\"%s\": \"%lu\"", title, memory);
-		    strcat(membuf, tempbuf);
-		    flag = 1;
-		}
-
-		fclose(fp);
-		strcat(membuf, "}");
-
-		char callbackbuf[256];	   
-		if (parse_callback(uri, callbackbuf) > 0) 
-        {
-		    char returnbuf[256];
-		    sprintf(returnbuf, "%s(%s)", callbackbuf, membuf);
-		    response_ok(fd, returnbuf, "application/javascript", version);
-		}
-
-		else
-		    response_ok(fd, membuf, "application/json", version);
-	    }
-	}
-
-    /* If looking for a specific file */
-	else if (strncmp(filename, pathbuf, strlen(pathbuf)) == 0)
-    {
-
-	    // check that filename does not contain '..'
-	    if (strstr(filename, "..") != NULL)
-        {
-		    clienterror(fd, filename, "403", "Forbidden", "Server couldn't read the file", version);
-        }
-	    if (stat(filename, &sbuf) < 0)
-        {
-            clienterror(fd, filename, "404", "Not found", "Page Not Found", version);
-        }
-	    if (is_static) 
-        {
-
-		    if (!(S_ISREG(sbuf.st_mode)) || !(S_IRUSR & sbuf.st_mode))
-            {
-                clienterror(fd, filename, "403", "Forbidden", "Server couldn't read the file", version);
-            }
-		    serve_static(fd, filename, sbuf.st_size);
-	    }
     
-	    else 
-        {
-
-		    if (!(S_ISREG(sbuf.st_mode)) || !(S_IXUSR & sbuf.st_mode))
+    	    FILE *fp;
+    	    fp = fopen("/proc/meminfo", "r");
+    
+    	    if (fp)
             {
-                clienterror(fd, filename, "403", "Forbidden", "Server couldn't run the CGI program", version);
+    	    	char line[256];
+    	    	char membuf[1024];
+    	    	strcpy(membuf, "{");
+    	    	int flag = 0;
+                
+                /* Read in */
+    	    	while (fgets(line, sizeof(line), fp)) 
+                {
+    
+    	    	    if (flag != 0) { strcat(membuf, ", "); }
+    	    	    char title[64];
+    	    	    long memory;
+    	    	    char skip[5];
+    
+    	    	    sscanf(line, "%s %lu %s", title, &memory, skip);
+    
+    	    	    title[strlen(title)-1] = '\0';
+    
+    	    	    char tempbuf[256];
+    	    	    sprintf(tempbuf, "\"%s\": \"%lu\"", title, memory);
+    	    	    strcat(membuf, tempbuf);
+    	    	    flag = 1;
+    	    	}
+    
+    	    	fclose(fp);
+    	    	strcat(membuf, "}");
+    
+    	    	char callbackbuf[256];	   
+    	    	if (parse_callback(uri, callbackbuf) > 0) 
+                {
+    	    	    char returnbuf[256];
+    	    	    sprintf(returnbuf, "%s(%s)", callbackbuf, membuf);
+    	    	    response_ok(fd, returnbuf, "application/javascript", version);
+    	    	}
+    
+    	    	else response_ok(fd, membuf, "application/json", version);
+    	    }//endif
+    	}//endif
+    
+        /* If looking for a specific file */
+    	else if (strncmp(filename, pathbuf, strlen(pathbuf)) == 0)
+        {
+    
+    	    // check that filename does not contain '..'
+    	    if (strstr(filename, "..") != NULL)
+            {
+    		    clienterror(fd, filename, "403", "Forbidden", "Server couldn't read the file", version);
             }
-		    serve_dynamic(fd, filename, cgiargs);
-	    }
-	}
-
-    /* Runloop widget */
-	else if (strncmp(uri, "/runloop", strlen("/runloop")) == 0)
-    {
-	    response_ok(fd, "<html>\n<body>\n<p>Started 15 second spin.</p>\n</body>\n</html>", "text/html", version);
-	    thread_pool_submit(pool, (thread_pool_callable_func_t)run_loop, (int *)0);
-	}
-
-    /* Allocanon widget */
-	else if (strncmp(uri, "/allocanon", strlen("/allocanon")) == 0)
-    {
-
-	    void *block = mmap(0, 67108864, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
-
-	    if (block == MAP_FAILED)
-		perror("mmap() failed\n");
-
-	    else {
-
-		memset(block, '\0', 67108864);
-
-		struct memory *e = (struct memory *)malloc(sizeof(struct memory));
-		e->block = block;
-		list_push_back(&memory_list, &e->elem);
-
-		char buf[256];
-		sprintf(buf, "<html>\n<body>\n<p>64MB allocated in the heap.</p>\n</body>\n</html>");
-		response_ok(fd, buf, "text/html", version);
-	    }
-	}
-
-    /* Freenon widget */
-	else if (strncmp(uri, "/freeanon", strlen("/freeanon")) == 0) {
-
-	    if (list_size(&memory_list) > 0) {
-
-		struct list_elem *e = list_pop_back(&memory_list);
-		struct memory *mem = list_entry(e, struct memory, elem);
-		int success = munmap(mem->block, 67108864);
-
-		if (success != 0)
-		    fprintf(stderr, "munmap() failed %s\n", strerror(errno));
-
-		else {
-		    char buf[256];
-		    sprintf(buf, "<html>\n<body>\n<p>64MB freed successfully.</p>\n</body>\n</html>");
-		    response_ok(fd, buf, "text/html", version);
-		}
-	    }
-
-	    else {
-		char buf[256];
-		sprintf(buf, "<html>\n<body>\n<p>You must allocate memory first using /allocanon</p>\n</body>\n</html>");
-		response_ok(fd, buf, "text/html", version);
-	    }
-	}
-    /* Couldn't find the request */
-	else
-	    clienterror(fd, filename, "404", "Not Found", "Not found", version);
-
-	if (strncmp(version, "HTTP/1.0", 8) == 0) { break; }
-    }
+    	    if (stat(filename, &sbuf) < 0)
+            {
+                clienterror(fd, filename, "404", "Not found", "Page Not Found", version);
+            }
+    	    if (is_static) 
+            {
+    
+    		    if (!(S_ISREG(sbuf.st_mode)) || !(S_IRUSR & sbuf.st_mode))
+                {
+                    clienterror(fd, filename, "403", "Forbidden", "Server couldn't read the file", version);
+                }
+    		    serve_static(fd, filename, sbuf.st_size);
+    	    }
+    	    else 
+            {
+    
+    		    if (!(S_ISREG(sbuf.st_mode)) || !(S_IXUSR & sbuf.st_mode))
+                {
+                    clienterror(fd, filename, "403", "Forbidden", "Server couldn't run the CGI program", version);
+                }
+    		    serve_dynamic(fd, filename, cgiargs);
+    	    }
+    	}
+    
+        /* Runloop widget */
+    	else if (strncmp(uri, "/runloop", strlen("/runloop")) == 0)
+        {
+    	    response_ok(fd, "<html>\n<body>\n<p>Started 15 second spin.</p>\n</body>\n</html>", "text/html", version);
+    	    thread_pool_submit(pool, (thread_pool_callable_func_t)run_loop, (int *)0);
+    	}
+    
+        /* Allocanon widget */
+    	else if (strncmp(uri, "/allocanon", strlen("/allocanon")) == 0)
+        {
+    
+    	    void *block = mmap(0, 67108864, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+    
+    	    if (block == MAP_FAILED)
+    		perror("mmap() failed\n");
+    
+    	    else {
+    
+    		memset(block, '\0', 67108864);
+    
+    		struct memory *e = (struct memory *)malloc(sizeof(struct memory));
+    		e->block = block;
+    		list_push_back(&memory_list, &e->elem);
+    
+    		char buf[256];
+    		sprintf(buf, "<html>\n<body>\n<p>64MB allocated in the heap.</p>\n</body>\n</html>");
+    		response_ok(fd, buf, "text/html", version);
+    	    }
+    	}
+    
+        /* Freenon widget */
+    	else if (strncmp(uri, "/freeanon", strlen("/freeanon")) == 0) 
+        {
+    
+    	    if (list_size(&memory_list) > 0) 
+            {
+    
+        		struct list_elem *e = list_pop_back(&memory_list);
+        		struct memory *mem = list_entry(e, struct memory, elem);
+        		int success = munmap(mem->block, 67108864);
+        
+        		if (success != 0)
+        		    fprintf(stderr, "munmap() failed %s\n", strerror(errno));
+        
+        		else 
+                {
+        		    char buf[256];
+        		    sprintf(buf, "<html>\n<body>\n<p>64MB freed successfully.</p>\n</body>\n</html>");
+        		    response_ok(fd, buf, "text/html", version);
+        		}
+    	    }
+    
+    	    else 
+            {
+    		    char buf[256];
+    		    sprintf(buf, "<html>\n<body>\n<p>You must allocate memory first using /allocanon</p>\n</body>\n</html>");
+    		    response_ok(fd, buf, "text/html", version);
+    	    }
+    	}//endif
+        /* Couldn't find the request */
+    	else
+    	    clienterror(fd, filename, "404", "Not Found", "Not found", version);
+    
+    	if (strncmp(version, "HTTP/1.0", 8) == 0) { break; }
+    }//endwhile
     //printf("finished http\n");
-    close(fd);
+    //close(fd);
 }
 
 /*

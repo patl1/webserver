@@ -10,7 +10,7 @@
  */
 (function () {
 
-var jqplotbase = "/group350/";
+var jqplotbase = "/files/";
 
 // loadScript taken from 
 // http://devblog.techhead.biz/2009/04/dynamically-load-external-javascript-in.html
