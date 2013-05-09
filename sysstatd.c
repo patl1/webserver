@@ -105,7 +105,7 @@ int main(int argc, char **argv)
     }
 
     /* For if there is no path specified */
-    if (our_path == NULL) our_path = "widgets";
+    if (our_path == NULL) our_path = "files";
     /* Initializations */
     list_init(&memory_list);
     int socketfd, optval = 1;
@@ -127,41 +127,41 @@ int main(int argc, char **argv)
     if(relay)
     {
         //int result = 0;
-	struct addrinfo *ai;
-	struct addrinfo hints;
-	memset(&hints, '\0', sizeof(hints));
-	hints.ai_flags = AI_ADDRCONFIG;
-	hints.ai_socktype = SOCK_STREAM;
-	char* name = strtok(argv[2], ":");
-	char* portname = strtok(NULL, "/");
-	//int e = 
-	getaddrinfo(name, portname, &hints, &ai);
-	//if (e != 0) error(EXIT_FAILURE, 0, "getaddrinfo: %s", strerror(e));
-	struct addrinfo *runp = ai;
-	while (runp != NULL)
-	{
-	   // int sock = socket(runp->ai_family, runp->ai_socktype, runp->ai_protocol);
-	    if(socketfd != -1)
-	    {
-		if(connect(socketfd, runp->ai_addr, runp->ai_addrlen) == 0)
-		{
-		    char *line = "group350\r\n";
-		    //printf("connected: %s\t %s\t %s\n", name, portname, line);
-		    write(socketfd, line, strlen(line));
-		    while(1)
-		    {
-			//printf("Inside loop \n");			
-			process_http(socketfd);
-			//printf("Skipped http\n");
-		    }
-		    //close(socketfd);
-		    freeaddrinfo(ai);
-		    //return result;
-		}
-	    }
-	    runp = runp->ai_next;
-	}
-	//return 1;
+    	struct addrinfo *ai;
+    	struct addrinfo hints;
+    	memset(&hints, '\0', sizeof(hints));
+    	hints.ai_flags = AI_ADDRCONFIG;
+    	hints.ai_socktype = SOCK_STREAM;
+    	char* name = strtok(argv[2], ":");
+    	char* portname = strtok(NULL, "/");
+    	//int e = 
+    	getaddrinfo(name, portname, &hints, &ai);
+    	//if (e != 0) error(EXIT_FAILURE, 0, "getaddrinfo: %s", strerror(e));
+    	struct addrinfo *runp = ai;
+    	while (runp != NULL)
+    	{
+    	   // int sock = socket(runp->ai_family, runp->ai_socktype, runp->ai_protocol);
+    	    if(socketfd != -1)
+    	    {
+    	    	if(connect(socketfd, runp->ai_addr, runp->ai_addrlen) == 0)
+    	    	{
+    	    	    char *line = "group350\r\n";
+    	    	    //printf("connected: %s\t %s\t %s\n", name, portname, line);
+    	    	    write(socketfd, line, strlen(line));
+    	    	    while(1)
+    	    	    {
+    	    		//printf("Inside loop \n");			
+    	    	    	process_http(socketfd);
+    	    		//printf("Skipped http\n");
+    	    	    }
+    	    	    //close(socketfd);
+    	    	    //freeaddrinfo(ai);
+    	    	    //return result;
+    	    	}
+    	    }
+    	    runp = runp->ai_next;
+    	}
+	    return 1;
     }            
 
     struct sockaddr_in serveraddr;
@@ -225,7 +225,8 @@ int main(int argc, char **argv)
 
 static void process_http(int fd)
 {
-
+    
+    printf("Processing http request\n");
     int is_static;
     struct stat sbuf;
     char buf[MAXLINE], method[MAXLINE], uri[MAXLINE], version[MAXLINE];
@@ -236,13 +237,17 @@ static void process_http(int fd)
     sprintf(pathbuf, "./%s/", our_path); 
     
     Rio_readinitb(&rio, fd);
-    
-    while (1) 
-    {
+ 
+    /* I commented this out because I think there's a problem with clearing out
+     * the buffers and stuff.  We'll just let the logic in main() take care of
+     * the polling.
+     */
+ //   while (1) 
+ //   {
 
     	/* Read request line and headers */
     	ssize_t x;
-    	if ((x = Rio_readlineb(&rio, buf, MAXLINE)) <= 0) continue;
+    	if ((x = Rio_readlineb(&rio, buf, MAXLINE)) <= 0);
         
         
     	sscanf(buf, "%s %s %s", method, uri, version);
@@ -251,15 +256,15 @@ static void process_http(int fd)
     	if (strcasecmp(method, "GET"))
         {
     	    clienterror(fd, method, "501", "Not Implemented", "Server does not implement this method", version);
-    	    continue;
+    	    /*continue;*/
     	}//endif
     
         /* Reading the request */
     	ssize_t size = read_requesthdrs(&rio);
     	if (size <= 0) 
         {
-    	    if (strncmp(version, "HTTP/1.0", 8) == 0) { break; }
-    	    else { continue; }
+    	    if (strncmp(version, "HTTP/1.0", 8) == 0) {/* break;*/ }
+    	    else { /*continue;*/ }
     	}//endif
     
     	/* Parse URI from GET request */
@@ -448,11 +453,10 @@ static void process_http(int fd)
     	    }
     	}//endif
         /* Couldn't find the request */
-    	else
-    	    clienterror(fd, filename, "404", "Not Found", "Not found", version);
+    	else clienterror(fd, filename, "404", "Not Found", "Not found", version);
     
-    	if (strncmp(version, "HTTP/1.0", 8) == 0) { break; }
-    }//endwhile
+    	if (strncmp(version, "HTTP/1.0", 8) == 0) {/* continue;*/ }
+   // }//endwhile
     //printf("finished http\n");
     //close(fd);
 }
@@ -643,9 +647,9 @@ void serve_static(int fd, char *filename, int filesize)
     /* Send response body to client */
     srcfd = open(filename, O_RDONLY, 0);    //line:netp:servestatic:open
     srcp = mmap(0, filesize, PROT_READ, MAP_PRIVATE, srcfd, 0);//line:netp:servestatic:mmap
-    close(srcfd);                           //line:netp:servestatic:close
     Rio_writen(fd, srcp, filesize);         //line:netp:servestatic:write
     munmap(srcp, filesize);                 //line:netp:servestatic:munmap
+    close(srcfd);                           //line:netp:servestatic:close
 }
 
 /*
@@ -695,6 +699,7 @@ void serve_dynamic(int fd, char *filename, char *cgiargs)
 
 /*
  * doit - handle one HTTP request/response transaction
+ * We're not going to use this one, but it's here for reference.
  */
 /* $begin doit */
 void doit(int fd) 
